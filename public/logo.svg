@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="UB Lunabotics">
+  <!-- Placeholder mark. Replace this file with the official UB Lunabotics logo. -->
+  <defs>
+    <mask id="crescent">
+      <rect width="64" height="64" fill="#fff"/>
+      <circle cx="38" cy="23" r="19" fill="#000"/>
+    </mask>
+  </defs>
+  <circle cx="29" cy="29" r="24" fill="#1D334B" mask="url(#crescent)"/>
+  <circle cx="42" cy="22" r="3" fill="#74818D"/>
+  <circle cx="49" cy="31" r="1.75" fill="#74818D"/>
+  <g fill="none" stroke="#1D334B" stroke-width="3.5" stroke-linecap="round">
+    <path d="M34 58h24"/>
+  </g>
+  <circle cx="40" cy="52" r="5" fill="#fff" stroke="#1D334B" stroke-width="3.5"/>
+  <circle cx="53" cy="52" r="5" fill="#fff" stroke="#1D334B" stroke-width="3.5"/>
+</svg>
