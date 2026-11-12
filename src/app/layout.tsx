@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 
 import { Toaster } from "@/components/ui/sonner";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
-import { AuthProvider } from "@/providers/auth-provider";
 
 import "./globals.css";
 
@@ -26,7 +25,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full bg-muted">
-        <AuthProvider>{children}</AuthProvider>
+        {children}
         <Toaster position="bottom-right" />
       </body>
     </html>

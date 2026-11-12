@@ -18,7 +18,7 @@ export function TaskCardContent({ task }: { task: Task }) {
   const { getUser, getTeam } = useData();
   const assignee = getUser(task.assigneeId);
   const doneCount = task.checklist.filter((item) => item.done).length;
-  const commentCount = task.comments.filter((c) => c.kind === "comment").length;
+  const commentCount = task.comments.length;
   const extraTags = task.tags.length - MAX_TAGS;
 
   return (

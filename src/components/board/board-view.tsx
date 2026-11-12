@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, SearchX, SlidersHorizontal, Users } from "lucide-react";
+import { ClipboardList, Plus, SearchX, SlidersHorizontal, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { KanbanBoard } from "@/components/board/kanban-board";
@@ -139,7 +139,26 @@ export function BoardView() {
         )}
       </div>
 
-      {visibleTasks.length === 0 && teamTasks.length > 0 ? (
+      {teamTasks.length === 0 ? (
+        <EmptyState
+          icon={ClipboardList}
+          title="No tasks yet."
+          description={
+            mayCreate
+              ? `Create the first task${team === "all" ? "" : ` for the ${teamName}`} to get the board started.`
+              : "Tasks will appear here once an admin creates them."
+          }
+          action={
+            mayCreate && (
+              <Button onClick={() => openCreate("todo")}>
+                <Plus aria-hidden />
+                Create Task
+              </Button>
+            )
+          }
+          className="flex-1"
+        />
+      ) : visibleTasks.length === 0 ? (
         <EmptyState
           icon={SearchX}
           title="No tasks match these filters"

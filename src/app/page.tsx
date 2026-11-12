@@ -1,5 +1,6 @@
-import { HomeRedirect } from "@/components/layout/home-redirect";
+import { redirect } from "next/navigation";
 
+/** The Scrum Board is the home page. The proxy sends signed-out visitors to /login. */
 export default function HomePage() {
-  return <HomeRedirect />;
+  redirect("/board");
 }

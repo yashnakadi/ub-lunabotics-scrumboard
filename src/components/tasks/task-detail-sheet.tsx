@@ -24,7 +24,7 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
 } from "@/lib/constants";
-import { formatDateTime, formatRelativeTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatRelativeTime } from "@/lib/format";
 import {
   canAssignTask,
   canCommentOnTask,
@@ -37,7 +37,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/providers/auth-provider";
 import { useData } from "@/providers/data-provider";
-import type { Task } from "@/types";
+import type { Task, TaskActivity, TaskPriority, TaskStatus, TeamId } from "@/types";
 
 const UNASSIGNED = "unassigned";
 
@@ -409,16 +409,49 @@ function Checklist({ task }: { task: Task }) {
 
 /* -------------------------------- Activity ------------------------------- */
 
+/** Turns a database activity record into a sentence fragment. */
+function describeActivity(
+  entry: TaskActivity,
+  userName: (id: string) => string | undefined,
+  teamName: (id: TeamId) => string | undefined,
+): string {
+  const { from, to } = entry.details;
+  switch (entry.action) {
+    case "created":
+      return "created this task";
+    case "status_changed":
+      return `moved this from ${STATUS_LABELS[from as TaskStatus] ?? from} to ${STATUS_LABELS[to as TaskStatus] ?? to}`;
+    case "assignee_changed":
+      return to ? `assigned this to ${userName(to) ?? "a former member"}` : "removed the assignee";
+    case "priority_changed":
+      return `set priority to ${(PRIORITY_LABELS[to as TaskPriority] ?? to ?? "").toLowerCase()}`;
+    case "due_date_changed":
+      return to ? `set the due date to ${formatDate(to)}` : "removed the due date";
+    case "team_changed":
+      return `moved this task to ${teamName(to as TeamId) ?? to}${
+        entry.details.from_key ? ` (was ${entry.details.from_key})` : ""
+      }`;
+    case "details_edited":
+      return "edited the task details";
+    default:
+      return "updated this task";
+  }
+}
+
 function Activity({ task }: { task: Task }) {
   const user = useCurrentUser();
-  const { getUser, addComment } = useData();
+  const { getUser, getTeam, addComment } = useData();
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
 
   const mayComment = canCommentOnTask(user, task);
   const entries = useMemo(
-    () => [...task.comments].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [task.comments],
+    () =>
+      [
+        ...task.comments.map((comment) => ({ type: "comment" as const, ...comment })),
+        ...task.activity.map((activity) => ({ type: "activity" as const, ...activity })),
+      ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [task.comments, task.activity],
   );
 
   async function submit() {
@@ -439,23 +472,25 @@ function Activity({ task }: { task: Task }) {
       ) : (
         <ol className="grid gap-3">
           {entries.map((entry) => {
-            const author = getUser(entry.authorId);
-            const name = author?.name ?? "Former member";
-
-            if (entry.kind === "activity") {
+            if (entry.type === "activity") {
+              const actor = getUser(entry.actorId);
+              const actorName = entry.actorId ? (actor?.name ?? "A former member") : "An administrator";
               return (
                 <li key={entry.id} className="flex items-start gap-2.5 text-xs text-muted-foreground">
                   <span className="flex w-6 shrink-0 justify-center pt-1.5" aria-hidden>
                     <span className="size-1.5 rounded-full bg-brand-slate/50" />
                   </span>
                   <p className="min-w-0 leading-relaxed">
-                    <span className="font-medium text-foreground">{name}</span> {entry.body}
+                    <span className="font-medium text-foreground">{actorName}</span>{" "}
+                    {describeActivity(entry, (id) => getUser(id)?.name, (id) => getTeam(id)?.name)}
                     <span className="whitespace-nowrap"> · {formatRelativeTime(entry.createdAt)}</span>
                   </p>
                 </li>
               );
             }
 
+            const author = getUser(entry.authorId);
+            const name = author?.name ?? "Former member";
             return (
               <li key={entry.id} className="flex items-start gap-2.5">
                 <UserAvatar user={author} size="sm" className="mt-0.5" />

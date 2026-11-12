@@ -84,7 +84,7 @@ function ItemDetail({ item, onClose }: { item: InventoryItem; onClose: () => voi
           </span>
         )}
         <div className="min-w-0">
-          <p className="font-mono text-[11px] font-medium text-muted-foreground">{item.id}</p>
+          <p className="font-mono text-[11px] font-medium text-muted-foreground">{item.code}</p>
           <DialogTitle className="mt-0.5 leading-snug">{item.name}</DialogTitle>
           <DialogDescription className="mt-1 text-xs">
             {item.description || "No description provided."}
@@ -184,7 +184,7 @@ function ItemDetail({ item, onClose }: { item: InventoryItem; onClose: () => voi
           open={confirmDelete}
           onOpenChange={setConfirmDelete}
           title={`Delete ${item.name}?`}
-          description={`${item.id} will be permanently removed from the inventory.`}
+          description={`${item.code} will be permanently removed from the inventory.`}
           confirmLabel="Delete item"
           onConfirm={async () => {
             if (await deleteItem(item.id)) onClose();

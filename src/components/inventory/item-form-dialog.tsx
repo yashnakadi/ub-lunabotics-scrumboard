@@ -114,7 +114,7 @@ function ItemForm({ item, onDone }: { item?: InventoryItem; onDone: () => void }
   return (
     <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-col">
       <div className="shrink-0 border-b border-border px-4 py-3.5 pr-12">
-        <DialogTitle>{editing ? `Edit ${item?.id}` : "Add inventory item"}</DialogTitle>
+        <DialogTitle>{editing ? `Edit ${item?.code}` : "Add inventory item"}</DialogTitle>
         <DialogDescription className="mt-1 text-xs">
           {editing
             ? "Update quantity, storage location, or other details."

@@ -1,16 +1,15 @@
 /**
- * Access rules for the two account roles (Admin, Member).
+ * Access rules for the two account roles (Admin, Member), used by the UI to
+ * decide which controls to show.
  *
- * Pure functions with no UI or storage dependencies, so the same rules can be
- * shared with (or ported to) the backend. The UI uses them to decide what to
- * show, and the mock services use them to reject disallowed writes.
- *
- * IMPORTANT: hiding a button in the browser is not security. When a real
- * backend is added, every rule here must also be enforced server-side.
+ * These are NOT the security boundary. The same rules are enforced in the
+ * database by row level security policies and triggers
+ * (supabase/migrations/*_initial_schema.sql). Keep the two in sync: if a rule
+ * changes here, change the policy too.
  */
 
 import { TEAM_IDS } from "@/lib/constants";
-import type { InventoryItem, Task, TeamId, User } from "@/types";
+import type { Task, TeamId, User } from "@/types";
 
 export function isAdmin(user: User): boolean {
   return user.role === "admin";
@@ -77,12 +76,6 @@ export function canRemoveChecklistItem(user: User): boolean {
 
 export function canCommentOnTask(user: User, task: Task): boolean {
   return canViewTask(user, task);
-}
-
-/** Inventory is organization-wide: every signed-in user can read all of it. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function canViewInventoryItem(_user: User, _item: InventoryItem): boolean {
-  return true;
 }
 
 /** Create, edit, and delete inventory entries. */

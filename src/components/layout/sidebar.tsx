@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  KeyRound,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -9,15 +10,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { usePathname } from "next/navigation";
+import { useFormStatus } from "react-dom";
 
-import { LogoTile } from "@/components/brand/logo";
+import { logout } from "@/app/login/actions";
+import { Logo } from "@/components/brand/logo";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { isAdmin } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { useAuth, useCurrentUser } from "@/providers/auth-provider";
+import { useCurrentUser } from "@/providers/auth-provider";
 
 const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -28,21 +30,12 @@ const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const router = useRouter();
   const user = useCurrentUser();
-  const { signOut } = useAuth();
-
-  async function handleLogout() {
-    onNavigate?.();
-    await signOut();
-    toast.success("Signed out");
-    router.replace("/login");
-  }
 
   return (
     <div className="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border px-4">
-        <LogoTile size={32} />
+        <Logo size={38} decorative />
         <div className="min-w-0 leading-tight">
           <p className="truncate text-sm font-semibold">{APP_NAME}</p>
           <p className="truncate text-[11px] text-white/60">{APP_TAGLINE}</p>
@@ -86,15 +79,39 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             {isAdmin(user) ? "Admin" : "Member"}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-sm font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-white/70"
+        <Link
+          href="/account/password"
+          onClick={onNavigate}
+          aria-current={pathname === "/account/password" ? "page" : undefined}
+          className={cn(
+            "flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm font-medium transition-colors focus-visible:outline-white/70",
+            pathname === "/account/password"
+              ? "bg-sidebar-accent text-white"
+              : "text-white/70 hover:bg-white/5 hover:text-white",
+          )}
         >
-          <LogOut className="size-4 text-white/60" aria-hidden />
-          Log out
-        </button>
+          <KeyRound className="size-4 text-white/60" aria-hidden />
+          Change password
+        </Link>
+        <form action={logout}>
+          <LogoutButton />
+        </form>
       </div>
     </div>
+  );
+}
+
+/** Submits the server-side logout action, which clears the session cookies. */
+function LogoutButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-sm font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-white/70 disabled:opacity-60"
+    >
+      <LogOut className="size-4 text-white/60" aria-hidden />
+      {pending ? "Logging out…" : "Log out"}
+    </button>
   );
 }

@@ -4,36 +4,33 @@ import { APP_NAME } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 /**
- * Brand mark.
+ * Official UB Lunabotics badge (`public/logo.svg`).
  *
- * `public/logo.svg` is a placeholder. To use the official UB Lunabotics logo,
- * replace that file (or drop in a PNG and update LOGO_SRC). The logo is assumed
- * to be dark-on-light, so on the navy sidebar it is shown on a white tile.
+ * The SVG is square and its viewBox is trimmed to the badge edge, so it can be
+ * rendered at any square size with `object-contain` and nothing is cropped or
+ * stretched. Being a vector, it stays sharp on high-DPI screens.
  */
 const LOGO_SRC = "/logo.svg";
 
-export function Logo({ size = 40, className }: { size?: number; className?: string }) {
+interface LogoProps {
+  /** Rendered width and height in CSS pixels. */
+  size?: number;
+  className?: string;
+  /** Set when the logo sits next to visible text that already names the team. */
+  decorative?: boolean;
+}
+
+export function Logo({ size = 40, className, decorative = false }: LogoProps) {
   return (
     <Image
       src={LOGO_SRC}
-      alt={`${APP_NAME} logo`}
+      alt={decorative ? "" : `${APP_NAME} logo`}
       width={size}
       height={size}
       unoptimized
       priority
-      className={cn("shrink-0 object-contain", className)}
-    />
-  );
-}
-
-/** Logo on a white rounded tile, for dark backgrounds. */
-export function LogoTile({ size = 36 }: { size?: number }) {
-  return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-lg bg-white"
+      className={cn("aspect-square shrink-0 object-contain", className)}
       style={{ width: size, height: size }}
-    >
-      <Logo size={Math.round(size * 0.72)} />
-    </span>
+    />
   );
 }

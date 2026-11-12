@@ -89,7 +89,7 @@ export function InventoryView() {
       if (team !== "all" && team !== "shared" && item.teamId !== team) return false;
       if (lowOnly && !isLowStock(item)) return false;
       if (query) {
-        const haystack = [item.id, item.name, item.description, item.location, item.category]
+        const haystack = [item.code, item.name, item.description, item.location, item.category]
           .join(" ")
           .toLowerCase();
         if (!haystack.includes(query)) return false;
@@ -100,7 +100,7 @@ export function InventoryView() {
     const teamName = (item: InventoryItem) =>
       item.teamId ? (teams.find((t) => t.id === item.teamId)?.name ?? "") : "Shared";
     const comparators: Record<SortKey, (a: InventoryItem, b: InventoryItem) => number> = {
-      id: (a, b) => a.id.localeCompare(b.id),
+      id: (a, b) => a.itemNumber - b.itemNumber,
       name: (a, b) => a.name.localeCompare(b.name),
       category: (a, b) => a.category.localeCompare(b.category),
       quantity: (a, b) => a.quantity - b.quantity,
@@ -224,12 +224,16 @@ export function InventoryView() {
           {rows.length === 0 ? (
             <EmptyState
               icon={PackageSearch}
-              title={inventory.length === 0 ? "The inventory is empty" : "No items match these filters"}
+              title={
+                inventory.length === 0
+                  ? "No inventory items have been added yet."
+                  : "No items match these filters"
+              }
               description={
                 inventory.length === 0
                   ? mayManage
-                    ? "Add the first item to start tracking equipment."
-                    : "Items added by an admin will appear here."
+                    ? "Add the first part, tool, or piece of equipment to start tracking it."
+                    : "Items will appear here once an admin adds them."
                   : "Try a different search or reset the filters."
               }
               action={
@@ -237,7 +241,7 @@ export function InventoryView() {
                   mayManage && (
                     <Button onClick={() => openForm()}>
                       <Plus aria-hidden />
-                      Add item
+                      Add Item
                     </Button>
                   )
                 ) : (
@@ -318,7 +322,7 @@ export function InventoryView() {
                       className="cursor-pointer"
                     >
                       <TableCell className="hidden py-3 pl-4 font-mono text-xs text-muted-foreground lg:table-cell">
-                        {item.id}
+                        {item.code}
                       </TableCell>
                       <TableCell className="w-full max-w-0 py-3 pl-4 whitespace-normal sm:w-[30%] lg:pl-2">
                         <button
@@ -333,7 +337,7 @@ export function InventoryView() {
                             {item.name}
                           </span>
                           <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                            <span className="font-mono lg:hidden">{item.id} · </span>
+                            <span className="font-mono lg:hidden">{item.code} · </span>
                             {item.description || item.location}
                           </span>
                         </button>
@@ -420,7 +424,7 @@ export function InventoryView() {
             if (!open) setDeleting(null);
           }}
           title={`Delete ${confirmTarget.name}?`}
-          description={`${confirmTarget.id} will be permanently removed from the inventory.`}
+          description={`${confirmTarget.code} will be permanently removed from the inventory.`}
           confirmLabel="Delete item"
           onConfirm={() => void deleteItem(confirmTarget.id)}
         />

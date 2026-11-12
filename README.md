@@ -1,86 +1,76 @@
 # UB Lunabotics · Team Project Management
 
-Internal project management app for the University at Buffalo NASA Lunabotics team: Scrum boards for the Software, Electrical, and Mechanical teams, a personal task list, an equipment inventory, and a progress dashboard.
+Internal project management for the University at Buffalo NASA Lunabotics team: Scrum boards for the Software, Electrical, and Mechanical teams, a personal task list, an equipment inventory, and a progress dashboard.
 
-**This is a frontend-only prototype.** There is no backend, database, or real authentication. All data is mock data kept in the browser (localStorage), and the login accepts only the fictional test accounts listed on the login screen.
+Data and accounts live in **Supabase**: PostgreSQL with row level security, plus Supabase Auth. People log in with their **email and password**. There is no public signup; administrators create accounts in the Supabase Dashboard.
 
-## Run it
+## Quick start
 
-```bash
-npm install
-npm run dev
-```
+1. **Environment.** Copy `.env.example` to `.env.local` and fill in both values. No secret key is needed:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=...
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
+   ```
+2. **Database.** Run both files in `supabase/migrations/`, in order, in the Supabase SQL Editor. Then run `supabase/tests/rls_verification.sql` to check the permissions.
+3. **Auth settings.** Turn off public signups, set the Site URL, and turn on Secure password change.
+4. **First admin.** Create your Auth user, then run `private.configure_user(...)` with role `'admin'`.
+5. **Run it:**
+   ```bash
+   npm install
+   npm run dev
+   ```
+   Open http://localhost:3000 and log in with your email.
 
-Open http://localhost:3000 and pick a test account on the login screen. Every account uses the demo password `lunabotics-demo`.
-
-| Account | Role | Teams |
-| --- | --- | --- |
-| Priya Raman | Admin | Software |
-| Marcus Bell | Admin | Mechanical |
-| Ethan Kowalski | Member | Software |
-| Sofia Alvarez | Member | Software, Electrical |
-| Jamal Okafor | Member | Electrical |
-| Hannah Lindqvist | Member | Mechanical |
-| Diego Santos | Member | Mechanical, Electrical |
-| Mei Tanaka | Member | Software, Electrical, Mechanical |
-| Noah Friedman | Member | Mechanical |
-
-Changes persist in your browser across refreshes. **Reset demo data** on the login screen restores the original tasks and inventory.
+[`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) has step-by-step instructions for each of these, plus how to add members, assign teams, change roles, and reset passwords.
 
 Other scripts: `npm run build`, `npm run start`, `npm run lint`.
 
 ## Stack
 
-Next.js (App Router) · React · TypeScript · Tailwind CSS v4 · shadcn/ui (Base UI) · Lucide icons · dnd-kit
-
-## Project layout
-
-```
-src/
-  app/                    Routes. (app)/ holds the signed-in pages.
-  types/                  Domain models: User, Team, Task, TaskComment, TaskChecklistItem, InventoryItem
-  lib/
-    permissions.ts        Admin/Member access rules (pure functions)
-    task-filters.ts       Task filtering, sorting, summaries (pure functions)
-    inventory.ts          Low-stock and summary helpers
-    format.ts             Date helpers
-    data/seed.ts          Mock users, teams, tasks, inventory
-    services/
-      types.ts            Data-access interfaces (AuthService, TaskService, ...)
-      index.ts            The one place that selects the implementations
-      mock/               localStorage-backed implementations + mock auth
-  providers/              AuthProvider (session), DataProvider (records + actions)
-  components/
-    ui/                   shadcn/ui primitives
-    shared/               Badges, avatars, selects, dialogs, table headers
-    layout/               App shell, sidebar, page header
-    board/ tasks/ inventory/ dashboard/ auth/
-```
+Next.js 16 (App Router, Cache Components) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui (Base UI) · Lucide · dnd-kit · Supabase (`@supabase/ssr`, `@supabase/supabase-js`)
 
 ## Roles
 
 | | Admin | Member |
 | --- | --- | --- |
 | Boards | All teams + "All Teams" | Only their teams |
+| Tasks assigned to them on other teams | n/a | Visible in My Tasks (not the whole board) |
 | Create, edit, assign, delete tasks | Yes | No |
 | Change status / drag cards | Any task | Tasks assigned to them |
 | Checklist | Add, tick, remove | Add and tick on their own tasks |
 | Comments | Yes | On tasks they can see |
-| Inventory | Full CRUD | Read-only |
+| Inventory | Add, edit, delete | Read and search |
+| Roles and team membership | Supabase Dashboard only | No |
 
-Admins can assign a task to anyone, including someone outside the task's team. That person sees it under **My Tasks** but does not get access to the other team's board.
+The **database** enforces these rules (RLS policies, column privileges, and triggers), not the UI. See section 6 of the setup guide.
 
-## Connecting a real backend
+## Project layout
 
-The UI never touches storage directly. It calls the interfaces in `src/lib/services/types.ts` through `services` from `src/lib/services/index.ts`.
+```
+supabase/
+  migrations/             Schema, RLS, triggers, functions (version-controlled)
+  tests/                  rls_verification.sql — 44 self-rolling-back permission checks
+docs/SUPABASE_SETUP.md    Setup and user administration
+src/
+  proxy.ts                Refreshes the Supabase session; redirects signed-out visitors
+  app/
+    login/                Email login page + server actions (login, logout)
+    auth/confirm/         Handles invite and password-recovery email links
+    (app)/                Signed-in pages; layout verifies the session on the server
+  lib/
+    supabase/             Browser, server, and proxy clients (publishable key only)
+    auth/                 Current-user loader, login rate limiter, password policy
+    services/             Data-access interfaces + Supabase implementations
+    permissions.ts        UI-side mirror of the access rules
+  providers/              AuthProvider (verified user), DataProvider (records + actions)
+  components/             UI (board, tasks, inventory, dashboard, layout, shared, ui)
+public/logo.svg           Official UB Lunabotics badge
+```
 
-1. Implement `AuthService`, `DirectoryService`, `TaskService`, and `InventoryService` against your API.
-2. Swap them in `src/lib/services/index.ts`.
-3. Delete `src/lib/services/mock/` and the demo-account panel in `src/components/auth/login-view.tsx`.
-4. Replace the client-side redirect in `src/components/layout/app-shell.tsx` with server-side session checks.
+## How login works
 
-**Frontend checks are not security.** The rules in `src/lib/permissions.ts` decide what the UI shows, and the mock services re-check them on every write to mirror what a server must do. A real backend has to enforce the same rules itself on every request.
+1. The person enters their email and password. The form posts to a server action.
+2. The server validates the input, applies rate limits, and calls `supabase.auth.signInWithPassword`. Supabase verifies the password; the app never stores, hashes or logs passwords.
+3. `@supabase/ssr` stores the session in cookies (`Secure` in production, `SameSite=Lax`). The proxy refreshes the session on each request, and the `(app)` layout confirms it with Supabase Auth before rendering. That check runs per request, so personal data is never prerendered or cached for anyone else.
 
-## Logo
-
-`public/logo.svg` is a placeholder mark. Replace that file with the official UB Lunabotics logo (or add a PNG and update `LOGO_SRC` in `src/components/brand/logo.tsx`). It is used on the login screen, in the sidebar, and as the favicon.
+Every login failure shows the same "Incorrect email or password." message, and failed attempts take a minimum amount of time. Neither the error text nor the response time reveals whether an account exists.

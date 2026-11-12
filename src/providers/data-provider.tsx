@@ -1,11 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,6 +15,7 @@ import { toast } from "sonner";
 
 import { STATUS_LABELS } from "@/lib/constants";
 import {
+  AuthError,
   services,
   type InventoryInput,
   type TaskInput,
@@ -22,6 +25,10 @@ import type { InventoryItem, Task, TaskStatus, Team, TeamId, User } from "@/type
 
 interface DataContextValue {
   loading: boolean;
+  /** Set when the initial load failed. Pages show an error instead of data. */
+  loadError: string | null;
+  /** Re-fetches everything from the database. */
+  reload: () => Promise<void>;
   users: User[];
   teams: Team[];
   tasks: Task[];
@@ -70,13 +77,18 @@ async function fetchSnapshot(): Promise<Snapshot> {
   return { users, teams, tasks, inventory };
 }
 
+/** Refetch when the tab regains focus, at most this often. */
+const FOCUS_REFRESH_MS = 30_000;
+
 /**
- * Holds the records for the signed-in user and exposes the actions pages use.
- * All reads and writes go through `services`, so swapping the mock services for
- * real API clients does not require touching this file's consumers.
+ * Holds the records the signed-in user is allowed to see and exposes the
+ * actions pages use. Everything comes from Supabase through `services`; there
+ * is no placeholder or cached fallback data.
  */
 export function DataProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -89,37 +101,85 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setInventory(snapshot.inventory);
   }, []);
 
-  const reload = useCallback(async () => {
-    applySnapshot(await fetchSnapshot());
-  }, [applySnapshot]);
+  /** An expired session sends the user back to the login page. */
+  const handleAuthFailure = useCallback(
+    (error: unknown): boolean => {
+      if (!(error instanceof AuthError)) return false;
+      toast.error(error.message);
+      router.replace("/login?reason=session");
+      router.refresh();
+      return true;
+    },
+    [router],
+  );
+
+  const lastLoadedAt = useRef(0);
+
+  /**
+   * Re-fetches everything. Only an explicit retry from the error screen
+   * replaces the page with an error; background refreshes fail quietly and
+   * keep showing the last data that loaded successfully.
+   */
+  const refresh = useCallback(
+    async ({ showErrorPage = false }: { showErrorPage?: boolean } = {}) => {
+      try {
+        applySnapshot(await fetchSnapshot());
+        lastLoadedAt.current = Date.now();
+        setLoadError(null);
+      } catch (error) {
+        if (!handleAuthFailure(error) && showErrorPage) setLoadError(errorMessage(error));
+      }
+    },
+    [applySnapshot, handleAuthFailure],
+  );
+
+  const reload = useCallback(() => refresh({ showErrorPage: true }), [refresh]);
 
   useEffect(() => {
     let cancelled = false;
     fetchSnapshot()
       .then((snapshot) => {
-        if (!cancelled) applySnapshot(snapshot);
+        if (cancelled) return;
+        applySnapshot(snapshot);
+        lastLoadedAt.current = Date.now();
       })
-      .catch((error) => toast.error(errorMessage(error)))
+      .catch((error) => {
+        if (!cancelled && !handleAuthFailure(error)) setLoadError(errorMessage(error));
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [applySnapshot]);
+  }, [applySnapshot, handleAuthFailure]);
 
-  /** Runs a write. On failure, shows the error and re-syncs from the service. */
+  // Pick up teammates' changes when returning to the tab.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadedAt.current < FOCUS_REFRESH_MS) return;
+      void refresh();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refresh]);
+
+  /** Runs a write. On failure, shows the error and re-syncs from the database. */
   const attempt = useCallback(
     async <T,>(action: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> => {
       try {
         return { ok: true, value: await action() };
       } catch (error) {
-        toast.error(errorMessage(error));
-        await reload().catch(() => undefined);
+        if (!handleAuthFailure(error)) {
+          toast.error(errorMessage(error));
+          // Re-sync so optimistic changes and stale rows are corrected.
+          await refresh();
+        }
         return { ok: false };
       }
     },
-    [reload],
+    [refresh, handleAuthFailure],
   );
 
   const putTask = useCallback((task: Task) => {
@@ -144,6 +204,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     return {
       loading,
+      loadError,
+      reload,
       users,
       teams,
       tasks,
@@ -243,7 +305,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return true;
       },
     };
-  }, [loading, users, teams, tasks, inventory, attempt, putTask, putItem]);
+  }, [loading, loadError, reload, users, teams, tasks, inventory, attempt, putTask, putItem]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

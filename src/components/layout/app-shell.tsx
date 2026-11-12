@@ -1,12 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-import { FullScreenLoader, Loader } from "@/components/layout/loader";
+import { Loader } from "@/components/layout/loader";
 import { SidebarContent } from "@/components/layout/sidebar";
+import { LoadError } from "@/components/shared/load-error";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { useAuth } from "@/providers/auth-provider";
+import { useCurrentUser } from "@/providers/auth-provider";
 import { DataProvider, useData } from "@/providers/data-provider";
 
 interface ShellContextValue {
@@ -19,31 +19,23 @@ export function useShell(): ShellContextValue {
   return useContext(ShellContext);
 }
 
-/** Waits for the initial data load so pages can assume records are present. */
+/** Holds pages back until the first load succeeds, so they can assume data is present. */
 function DataGate({ children }: { children: ReactNode }) {
-  const { loading } = useData();
-  return loading ? <Loader /> : children;
+  const { loading, loadError, reload } = useData();
+  if (loading) return <Loader />;
+  if (loadError) return <LoadError message={loadError} onRetry={reload} className="flex-1" />;
+  return children;
 }
 
 /**
- * Frame for every signed-in page: auth guard, sidebar (drawer on small
- * screens), and the main content column.
- *
- * The redirect below is a UX convenience only. Real protection must come from
- * server-side session checks once a backend exists.
+ * Frame for every signed-in page: sidebar (drawer on small screens) and the
+ * main content column. The session has already been verified on the server
+ * by the (app) layout before this renders.
  */
 export function AppShell({ children }: { children: ReactNode }) {
-  const { status, user } = useAuth();
-  const router = useRouter();
+  const user = useCurrentUser();
   const [navOpen, setNavOpen] = useState(false);
-
-  useEffect(() => {
-    if (status === "unauthenticated") router.replace("/login");
-  }, [status, router]);
-
   const shell = useMemo(() => ({ openNavigation: () => setNavOpen(true) }), []);
-
-  if (status !== "authenticated" || !user) return <FullScreenLoader />;
 
   return (
     <ShellContext.Provider value={shell}>

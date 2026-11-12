@@ -1,81 +1,46 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useRouter } from "next/navigation";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
 
-import { services } from "@/lib/services";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { User } from "@/types";
 
-type AuthState =
-  | { status: "loading"; user: null }
-  | { status: "unauthenticated"; user: null }
-  | { status: "authenticated"; user: User };
-
-interface AuthContextValue {
-  status: AuthState["status"];
-  user: User | null;
-  signIn: (email: string, password: string) => Promise<User>;
-  signOut: () => Promise<void>;
+/** The signed-in user, including their own email address. */
+export interface SignedInUser extends User {
+  email: string;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+const AuthContext = createContext<SignedInUser | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ status: "loading", user: null });
+/**
+ * Makes the server-verified user available to Client Components and watches
+ * for the session ending (sign-out in another tab, or an expired refresh
+ * token), in which case it sends the user back to the login page.
+ *
+ * The user object is display data only. Every permission is enforced again by
+ * the database through row level security.
+ */
+export function AuthProvider({ user, children }: { user: SignedInUser; children: ReactNode }) {
+  const router = useRouter();
 
   useEffect(() => {
-    let cancelled = false;
-    services.auth
-      .getCurrentUser()
-      .catch(() => null)
-      .then((user) => {
-        if (cancelled) return;
-        setState(
-          user
-            ? { status: "authenticated", user }
-            : { status: "unauthenticated", user: null },
-        );
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const supabase = getSupabaseBrowserClient();
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || (session && session.user.id !== user.id)) {
+        router.replace("/login?reason=session");
+        router.refresh();
+      }
+    });
+    return () => data.subscription.unsubscribe();
+  }, [router, user.id]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const user = await services.auth.signIn(email, password);
-    setState({ status: "authenticated", user });
-    return user;
-  }, []);
-
-  const signOut = useCallback(async () => {
-    await services.auth.signOut();
-    setState({ status: "unauthenticated", user: null });
-  }, []);
-
-  const value = useMemo<AuthContextValue>(
-    () => ({ status: state.status, user: state.user, signIn, signOut }),
-    [state, signIn, signOut],
-  );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used inside <AuthProvider>.");
-  return context;
+  return <AuthContext.Provider value={user}>{children}</AuthContext.Provider>;
 }
 
 /** The signed-in user. Only call from components rendered inside the app shell. */
-export function useCurrentUser(): User {
-  const { user } = useAuth();
-  if (!user) throw new Error("useCurrentUser requires a signed-in user.");
+export function useCurrentUser(): SignedInUser {
+  const user = useContext(AuthContext);
+  if (!user) throw new Error("useCurrentUser must be used inside <AuthProvider>.");
   return user;
 }

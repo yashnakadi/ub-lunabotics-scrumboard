@@ -5,8 +5,8 @@ import { InventoryView } from "@/components/inventory/inventory-view";
 export const metadata: Metadata = { title: "Inventory" };
 
 /**
- * This page renders only after the client-side (mock) session check, so it is
- * not part of the prerendered shell. Revisit once sessions resolve on the server.
+ * Signed-in pages depend on the session (read per request in the (app) layout),
+ * so they cannot be prerendered into a static shell.
  */
 export const instant = false;
 

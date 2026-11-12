@@ -1,14 +1,13 @@
 /**
  * Data-access contracts.
  *
- * The UI talks only to these interfaces (through `@/lib/services`). The current
- * implementations live in `./mock` and store data in the browser. To connect a
- * real backend, write new implementations of these interfaces (for example,
- * thin `fetch` wrappers around API routes) and swap them in `./index.ts`.
+ * The UI talks only to these interfaces (through `@/lib/services`). The
+ * implementations in `./supabase` query Supabase as the signed-in user, so
+ * PostgreSQL row level security authorizes every read and write.
  *
- * Every method is async and takes no "acting user" argument: just like a real
- * API, the service identifies the caller from the session and is responsible
- * for authorizing the request.
+ * Every method is async and takes no "acting user" argument: the database
+ * identifies the caller from the session. Sign-in and sign-out are handled by
+ * server actions in `src/app/login/actions.ts`, not by these services.
  */
 
 import type {
@@ -29,9 +28,9 @@ export class PermissionDeniedError extends Error {
   }
 }
 
-/** Thrown for bad credentials or a missing session. */
+/** Thrown when the session is missing or has expired. */
 export class AuthError extends Error {
-  constructor(message = "Incorrect email or password.") {
+  constructor(message = "Your session has expired. Please log in again.") {
     super(message);
     this.name = "AuthError";
   }
@@ -44,11 +43,12 @@ export class NotFoundError extends Error {
   }
 }
 
-export interface AuthService {
-  signIn(email: string, password: string): Promise<User>;
-  signOut(): Promise<void>;
-  /** Resolves the user for the current session, or null when signed out. */
-  getCurrentUser(): Promise<User | null>;
+/** Thrown for any other failure. The message is always safe to show users. */
+export class ServiceError extends Error {
+  constructor(message = "Something went wrong. Please try again.") {
+    super(message);
+    this.name = "ServiceError";
+  }
 }
 
 export interface DirectoryService {
@@ -81,6 +81,7 @@ export type TaskPatch = Partial<
 export interface TaskService {
   /** Returns only the tasks the current user is allowed to see. */
   list(): Promise<Task[]>;
+  get(id: string): Promise<Task>;
   create(input: TaskInput): Promise<Task>;
   update(id: string, patch: TaskPatch): Promise<Task>;
   /**
@@ -95,7 +96,7 @@ export interface TaskService {
   addComment(id: string, body: string): Promise<Task>;
 }
 
-export type InventoryInput = Omit<InventoryItem, "id" | "updatedAt">;
+export type InventoryInput = Omit<InventoryItem, "id" | "itemNumber" | "code" | "updatedAt">;
 
 export interface InventoryService {
   list(): Promise<InventoryItem[]>;
@@ -105,7 +106,6 @@ export interface InventoryService {
 }
 
 export interface Services {
-  auth: AuthService;
   directory: DirectoryService;
   tasks: TaskService;
   inventory: InventoryService;

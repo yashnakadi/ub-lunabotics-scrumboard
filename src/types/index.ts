@@ -1,9 +1,9 @@
 /**
  * Domain models for the UB Lunabotics project management app.
  *
- * These are the shapes the UI works with. When a real backend is added, the
- * API/database layer should map its records to these same interfaces so the
- * components do not need to change.
+ * These are the shapes the UI works with. The Supabase service layer
+ * (`src/lib/services/supabase`) maps database rows to them, so components never
+ * depend on table or column names.
  */
 
 export type Role = "admin" | "member";
@@ -15,19 +15,19 @@ export interface Team {
   name: string;
   /** Prefix used for task keys, e.g. "SW" -> SW-001. */
   prefix: string;
-  description: string;
 }
 
 export interface User {
   id: string;
+  /** Full name as set by an administrator. */
   name: string;
-  email: string;
   role: Role;
+  /**
+   * Teams the user belongs to. Members can only read their own memberships,
+   * so for other people this is empty unless the viewer is an admin.
+   */
   teamIds: TeamId[];
   initials: string;
-  /** Short role/position label shown in pickers, e.g. "Autonomy Lead". */
-  title?: string;
-  avatarUrl?: string;
 }
 
 export type TaskStatus = "todo" | "in_progress" | "in_review" | "done";
@@ -43,16 +43,38 @@ export interface TaskChecklistItem {
 export interface TaskComment {
   id: string;
   taskId: string;
-  authorId: string;
+  /** Null when the author's account has been removed. */
+  authorId: string | null;
   body: string;
   createdAt: string;
-  /** "activity" entries are system-generated history (status changes, etc.). */
-  kind: "comment" | "activity";
+}
+
+export type TaskActivityAction =
+  | "created"
+  | "status_changed"
+  | "assignee_changed"
+  | "priority_changed"
+  | "due_date_changed"
+  | "team_changed"
+  | "details_edited";
+
+/** History entry written by the database whenever a task changes. */
+export interface TaskActivity {
+  id: string;
+  taskId: string;
+  /** Null for changes made by an administrator directly in Supabase. */
+  actorId: string | null;
+  action: TaskActivityAction;
+  /** Action-specific values, e.g. `{ from: "todo", to: "done" }`. */
+  details: Record<string, string | null>;
+  createdAt: string;
 }
 
 export interface Task {
-  /** Stable internal identifier. */
+  /** Stable internal identifier (UUID). */
   id: string;
+  /** Per-team sequence number assigned by the database. */
+  taskNumber: number;
   /** Human-readable key shown in the UI, e.g. SW-001. */
   key: string;
   title: string;
@@ -63,12 +85,14 @@ export interface Task {
   assigneeId: string | null;
   /** Local calendar date, formatted YYYY-MM-DD. */
   dueDate: string | null;
-  createdById: string;
+  /** Null when the creator's account has been removed. */
+  createdById: string | null;
   createdAt: string;
   updatedAt: string;
   tags: string[];
   checklist: TaskChecklistItem[];
   comments: TaskComment[];
+  activity: TaskActivity[];
   /** Sort position within its Kanban column (ascending). */
   order: number;
 }
@@ -89,8 +113,12 @@ export type InventoryCondition =
   | "Out of Service";
 
 export interface InventoryItem {
-  /** Item ID shown in the UI, e.g. INV-0001. */
+  /** Stable internal identifier (UUID). */
   id: string;
+  /** Sequence number assigned by the database. */
+  itemNumber: number;
+  /** Item ID shown in the UI, e.g. INV-0001. */
+  code: string;
   name: string;
   category: InventoryCategory;
   description: string;
