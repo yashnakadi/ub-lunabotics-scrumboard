@@ -11,9 +11,9 @@ Data and accounts live in **Supabase**: PostgreSQL with row level security, plus
    NEXT_PUBLIC_SUPABASE_URL=...
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
    ```
-2. **Database.** Run both files in `supabase/migrations/`, in order, in the Supabase SQL Editor. Then run `supabase/tests/rls_verification.sql` to check the permissions.
+2. **Database.** Run the files in `supabase/migrations/`, in order, in the Supabase SQL Editor. Then run the two scripts in `supabase/tests/` to check them.
 3. **Auth settings.** Turn off public signups, set the Site URL, and turn on Secure password change.
-4. **First admin.** Create your Auth user, then run `private.configure_user(...)` with role `'admin'`.
+4. **First admin.** Create your Auth user, then run `select * from private.configure_user('you@buffalo.edu', 'Your Name', 'admin', array['software']);`.
 5. **Run it:**
    ```bash
    npm install
@@ -49,7 +49,7 @@ The **database** enforces these rules (RLS policies, column privileges, and trig
 ```
 supabase/
   migrations/             Schema, RLS, triggers, functions (version-controlled)
-  tests/                  rls_verification.sql — 44 self-rolling-back permission checks
+  tests/                  Self-rolling-back checks: RLS (44) and configure_user (25)
 docs/SUPABASE_SETUP.md    Setup and user administration
 src/
   proxy.ts                Refreshes the Supabase session; redirects signed-out visitors

@@ -21,12 +21,13 @@ If `SUPABASE_SECRET_KEY` is still in your `.env.local` from the earlier username
 
 ## 2. Database migrations
 
-Apply these in order. Both are safe to re-run and neither deletes data.
+Apply these in order. All are safe to re-run and none deletes data.
 
 | File | What it does |
 | --- | --- |
 | `supabase/migrations/20261112000000_initial_schema.sql` | Creates the tables, row level security policies, triggers, helper functions and column privileges. Seeds only the three teams. |
 | `supabase/migrations/20261113000000_email_login.sql` | Switches to email login: removes the username lookup function and the username rules, and stops showing usernames (the column itself is kept). Fixes server-side (`service_role`) writes. Removes direct access to the task-number counter. Limits the size of task tags. |
+| `supabase/migrations/20261114000000_configure_user_v2.sql` | Replaces `private.configure_user()` with the safer version described in section 4. It only replaces the function; no accounts or data change. |
 
 **How to apply:** Dashboard → **SQL Editor → New query**, paste the file, click **Run**. Or with the CLI: `npx supabase link --project-ref <ref>` and then `npx supabase db push`.
 
@@ -40,12 +41,16 @@ alter table public.profiles drop column username;
 ```
 It is destructive: the stored usernames are lost. Nothing in the app or database depends on them.
 
-### Verify permissions
+### Verify
 
-Run `supabase/tests/rls_verification.sql` in the SQL Editor after both migrations. It creates three temporary users, acts as each one, and checks 44 rules. It always ends with an error, which undoes everything it created:
+Two test scripts are included. Run them in the SQL Editor after the migrations. Each uses temporary users and always ends with an error, which rolls back everything it created. Real accounts are never touched.
 
-- **Pass:** `ERROR: RLS verification PASSED: 44 checks. All test data has been rolled back.`
-- **Fail:** `ERROR: FAIL: <the rule that broke>`
+| Script | Checks | Pass message |
+| --- | --- | --- |
+| `supabase/tests/rls_verification.sql` | 44 permission rules for every role | `ERROR: RLS verification PASSED: 44 checks. …` |
+| `supabase/tests/configure_user_verification.sql` | 25 checks of `configure_user` (needs migration 3) | `ERROR: configure_user verification PASSED: 25 checks. …` |
+
+A failure reads `ERROR: FAIL: <what broke>`.
 
 ---
 
@@ -114,18 +119,61 @@ In the **SQL Editor**:
 
 ```sql
 select * from private.configure_user(
-  'jdoe@buffalo.edu',              -- email of the Auth user
-  'Jane Doe',                      -- full name shown in the app
-  'member',                        -- 'member' or 'admin'
-  array['software', 'electrical']  -- any of: software, electrical, mechanical
+  'student@buffalo.edu',            -- email of an EXISTING Auth user (any capitalization)
+  'Student Name',                   -- display name
+  'member',                         -- 'member' or 'admin'
+  array['software', 'electrical']   -- any of: software, electrical, mechanical
 );
 ```
 
-**Teams are replaced** by the list you pass; use `array[]::text[]` for none. Only the SQL Editor can run `private.configure_user`; no app user can call it.
+It returns the saved result (`user_id, email, full_name, role, team_ids`) so you can see what changed.
+
+**The Auth account must exist first** (step 1). The function looks the user up in Supabase Authentication by email. If there's no match, it stops with "No Supabase Auth user has the email …". It never creates accounts and never touches passwords, emails or sign-in settings.
+
+How each argument behaves:
+
+| Argument | Rules | Pass `NULL` to… |
+| --- | --- | --- |
+| Email | Required. Matched case-insensitively. | n/a |
+| Full name | 1–120 characters; blank is rejected | keep the current name |
+| Role | `admin` or `member` (any capitalization); anything else is rejected | keep the current role |
+| Teams | **Replaces** all memberships. Names are case-insensitive and duplicates are ignored. An unknown name stops the whole call and is reported by name. `array[]::text[]` means no teams. | keep the current teams |
+
+- All four arguments are required, so you can't accidentally demote someone by leaving the role off.
+- Each call is all-or-nothing: if anything is invalid, nothing changes.
+- Running the same call again changes nothing.
+
+Only the SQL Editor (the database owner) can run `private.configure_user`. It isn't available through the Data API, and no app user (signed in or not) can execute it.
+
+### Examples
+
+```sql
+-- New member on one team (after creating their Auth account)
+select * from private.configure_user('jdoe@buffalo.edu', 'Jane Doe', 'member', array['software']);
+
+-- Assign several teams
+select * from private.configure_user('jdoe@buffalo.edu', 'Jane Doe', 'member',
+                                     array['software', 'electrical', 'mechanical']);
+
+-- Promote to admin (name and teams unchanged)
+select * from private.configure_user('jdoe@buffalo.edu', null, 'admin', null);
+
+-- Demote back to member
+select * from private.configure_user('jdoe@buffalo.edu', null, 'member', null);
+
+-- Change teams: she ends up on Mechanical only
+select * from private.configure_user('jdoe@buffalo.edu', null, null, array['mechanical']);
+
+-- Remove all team assignments
+select * from private.configure_user('jdoe@buffalo.edu', null, null, array[]::text[]);
+
+-- Change only the display name
+select * from private.configure_user('jdoe@buffalo.edu', 'Jane Q. Doe', null, null);
+```
 
 ### The first administrator
 
-Your admin account already exists. For another admin later, run `configure_user` with `'admin'`.
+Your admin account already exists. To add another admin later, create their Auth user, then run `configure_user` with `'admin'`.
 
 Roles can only be changed from the SQL Editor or Table Editor. The database rejects role changes made through the API, even by admins.
 
@@ -134,19 +182,6 @@ Roles can only be changed from the SQL Editor or Table Editor. The database reje
 ## 5. Day-to-day administration
 
 ```sql
--- Promote or demote
-update public.profiles set role = 'admin' where lower(email) = 'jdoe@buffalo.edu';
-
--- Add one team without touching the others
-insert into public.team_members (user_id, team_id)
-select id, 'mechanical' from public.profiles where lower(email) = 'jdoe@buffalo.edu'
-on conflict do nothing;
-
--- Remove from a team
-delete from public.team_members
-where team_id = 'mechanical'
-  and user_id = (select id from public.profiles where lower(email) = 'jdoe@buffalo.edu');
-
 -- Everyone, with teams
 select p.full_name, p.email, p.role,
        coalesce(string_agg(tm.team_id, ', ' order by tm.team_id), '') as teams
@@ -155,6 +190,8 @@ left join public.team_members tm on tm.user_id = p.id
 group by p.id
 order by p.full_name;
 ```
+
+Use `private.configure_user` (above) for names, roles and teams.
 
 - **Reset a password:** Authentication → Users → the user → **Send password recovery**. This needs the Reset password template from section 3.
 - **Remove someone:** Authentication → Users → **Delete user**. Their profile and team memberships go with them. Their tasks become unassigned, and their comments and history remain, labeled "former member".
